@@ -1,229 +1,92 @@
-#plotly interactive plots
-#!pip install dash==2.11.1
-
-import dash
-from dash import html, dcc
-from dash.dependencies import Input, Output
-from dash import dash_table
-import pandas as pd
-import plotly.graph_objects as go
+import zipfile
 import numpy as np
-import os
-#from google.colab import drive # this should not be included for deployment
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from google.colab import drive
 
-# Mount Drive
-#drive.mount('/drive') # remember: when deploying a dashboard. This should not be included
-#os.chdir('/drive/MyDrive/Dashboard_Python') #should not be included for deployment
+# 1. Ligar ao Google Drive e definir o caminho do ficheiro
+drive.mount('/content/drive')
+caminho_zip = '/content/drive/MyDrive/tennis+major+tournament+match+statistics.zip'
 
-# -------------------------------------------------------------
-# LOAD DATA
-# -------------------------------------------------------------
-df = pd.read_csv("electric-car-stocks.csv")
-df.columns = df.columns.str.strip()
-df["Year"] = df["Year"].astype(int)
-entities = sorted(df["Entity"].unique())
+# 2. Extração e unificação dos 8 ficheiros CSV
+lista_dfs = []
 
-# -------------------------------------------------------------
-# CREATE DASH APP
-# -------------------------------------------------------------
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
-server = app.server
+with zipfile.ZipFile(caminho_zip, 'r') as z:
+    for ficheiro in z.namelist():
+        if ficheiro.endswith('.csv'):
+            # Extrai o Torneio e o Sexo a partir do nome (ex: 'AusOpen-men-2013.csv')
+            partes = ficheiro.split('/')[-1].replace('.csv', '').split('-')
+            torneio = partes[0]
+            sexo = 'Masculino' if partes[1].lower() == 'men' else 'Feminino'
+            
+            df_temp = pd.read_csv(z.open(ficheiro))
+            # Normaliza os nomes das colunas ANTES de juntar (evita o erro de labels duplicadas!)
+            df_temp.columns = [col.replace(' ', '') for col in df_temp.columns]
+            df_temp['Torneio'] = torneio
+            df_temp['Sexo'] = sexo
+            lista_dfs.append(df_temp)
 
-# -------------------------------------------------------------
-# LAYOUT
-# -------------------------------------------------------------
-app.layout = html.Div([
-    html.H1("Electric Car Stocks Dashboard", style={"textAlign": "center"}),
+# Junta todos os torneios num único DataFrame
+df_total = pd.concat(lista_dfs, ignore_index=True)
 
-    dcc.Tabs(id="mainTabs", value="overviewTab", children=[
-        dcc.Tab(label="Overview", value="overviewTab"),
-        dcc.Tab(label="Graphics (Nested Tabs)", value="graphicsTab"),
-        dcc.Tab(label="Data Table", value="tableTab"),
-        dcc.Tab(label="Summary Statistics", value="summaryTab"),
-    ]),
+# Mapeia o número da ronda para texto legível
+mapa_rondas = {
+    1: '1ª Ronda (R128)',
+    2: '2ª Ronda (R64)',
+    3: '3ª Ronda (R32)',
+    4: 'Oitavos de Final (R16)',
+    5: 'Quartos de Final (QF)',
+    6: 'Meias-Finais (SF)',
+    7: 'Final (F)'
+}
+df_total['Nome_Ronda'] = df_total['Round'].map(mapa_rondas).fillna(df_total['Round'].astype(str))
 
-    html.Hr(),
+# Identifica o vencedor de cada partida (substitui o .apply que dava erro)
+df_total['Vencedor'] = np.where(df_total['Result'] == 1, df_total['Player1'], df_total['Player2'])
 
-    # ------------------- FILTERS -------------------
-    html.Div([
-        html.Div([
-            html.Label("Select Entity:"),
-            dcc.Dropdown(
-                id="entityFilter",
-                options=[{"label": "All", "value": "All"}] +
-                        [{"label": e, "value": e} for e in entities],
-                value=["All"],
-                multi=True,
-                style={"width": "95%"}
-            )
-        ], style={'width': '28%', 'display': 'inline-block'}),
+print(f"\nTotal de partidas carregadas: {len(df_total)}")
+display(df_total[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']].head(10))
 
-        html.Div([
-            html.Label("Select Year Range:"),
-            dcc.RangeSlider(
-                id="yearFilter",
-                min=df["Year"].min(),
-                max=df["Year"].max(),
-                value=[df["Year"].min(), df["Year"].max()],
-                marks={y: str(y) for y in range(df["Year"].min(), df["Year"].max()+1, 2)},
-                tooltip={"placement": "bottom", "always_visible": True}
-            )
-        ], style={'width': '68%', 'display': 'inline-block', 'paddingLeft': '2%'})
-    ], style={"padding": "15px"}),
-
-    html.Hr(),
-
-    html.Div(id="tabContent"),
-    dcc.Store(id="filteredData")
-])
-
-# -------------------------------------------------------------
-# CALLBACK → FILTER DATA
-# -------------------------------------------------------------
-@app.callback(
-    Output("filteredData", "data"),
-    [Input("entityFilter", "value"),
-     Input("yearFilter", "value")]
+# 3. Tabela: Total de Jogos por Torneio, Sexo e Ronda
+print("\n=== TOTAL DE PARTIDAS POR TORNEIO, SEXO E RONDA ===")
+resumo_rondas = pd.pivot_table(
+    df_total, 
+    index=['Round', 'Nome_Ronda'], 
+    columns=['Torneio', 'Sexo'], 
+    values='Vencedor', 
+    aggfunc='count', 
+    fill_value=0
 )
-def filter_data(entitysel, yearrange):
-    low, high = yearrange
-    dff = df.copy()
+display(resumo_rondas)
 
-    if "All" not in entitysel:
-        dff = dff[dff["Entity"].isin(entitysel)]
+# 4. Tabela: Campeões e Finalistas de cada Torneio
+print("\n=== FINAIS E CAMPEÕES POR TORNEIO E SEXO ===")
+finais = df_total[df_total['Round'] == 7][['Torneio', 'Sexo', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']]
+display(finais)
 
-    dff = dff[(dff["Year"] >= low) & (dff["Year"] <= high)]
-    return dff.to_dict("records")
+# 5. Visualizações Gráficas
+sns.set_theme(style="whitegrid")
+fig, axes = plt.subplots(1, 2, figsize=(15, 5))
 
-# -------------------------------------------------------------
-# CALLBACK → MAIN TABS
-# -------------------------------------------------------------
-@app.callback(
-    Output("tabContent", "children"),
-    [Input("mainTabs", "value"),
-     Input("filteredData", "data")]
-)
-def render_tabs(tab, data):
+# Gráfico 1: Total de partidas registadas por Torneio e Sexo
+sns.countplot(data=df_total, x='Torneio', hue='Sexo', ax=axes[0], palette='Set2')
+axes[0].set_title('Número de Partidas Registadas por Torneio e Sexo')
+axes[0].set_xlabel('Torneio')
+axes[0].set_ylabel('Nº de Partidas')
 
-    # SAFETY CHECK: Data not ready yet
-    if not data:
-        return html.Div("Loading data...")
+# Gráfico 2: Média de Aces por partida (Torneio vs Sexo)
+if 'ACE.1' in df_total.columns and 'ACE.2' in df_total.columns:
+    df_total['Total_Aces'] = df_total['ACE.1'].fillna(0) + df_total['ACE.2'].fillna(0)
+    sns.barplot(data=df_total, x='Torneio', y='Total_Aces', hue='Sexo', ax=axes[1], palette='Set1', errorbar=None)
+    axes[1].set_title('Média de Aces por Partida (Torneio vs Sexo)')
+    axes[1].set_xlabel('Torneio')
+    axes[1].set_ylabel('Média de Aces por Jogo')
 
-    dff = pd.DataFrame(data)
+plt.tight_layout()
+plt.show()
 
-    if tab == "overviewTab":
-        fig = go.Figure()
-
-        for entity in dff["Entity"].unique():
-            df_e = dff[dff["Entity"] == entity]
-            fig.add_trace(go.Scatter(
-                x=df_e["Year"],
-                y=df_e["Electric car stocks"],
-                mode="lines+markers",
-                name=entity
-            ))
-
-        return html.Div([
-            html.H3("Overview"),
-            dcc.Graph(figure=fig)
-        ])
-
-    if tab == "graphicsTab":
-        return html.Div([
-            dcc.Tabs(id="nestedTabs", value="line", children=[
-                dcc.Tab(label="Line Chart", value="line"),
-                dcc.Tab(label="Bar Chart", value="bar"),
-                dcc.Tab(label="Scatter Plot", value="scatter"),
-                dcc.Tab(label="Trendline Plot", value="trend")
-            ]),
-            html.Div(id="nestedContent", style={"paddingTop": "20px"})
-        ])
-
-    if tab == "tableTab":
-        return html.Div([
-            html.H3("Filtered Data Table"),
-            dash_table.DataTable(
-                columns=[{"name": col, "id": col} for col in dff.columns],
-                data=dff.to_dict("records"),
-                page_size=12,
-                style_table={"overflowX": "auto"},
-                style_cell={"textAlign": "center"}
-            )
-        ])
-
-    if tab == "summaryTab":
-        return html.Div([
-            html.H3("Summary Statistics"),
-            html.Pre(dff.describe().to_string())
-        ])
-
-# -------------------------------------------------------------
-# CALLBACK → NESTED GRAPH TABS
-# -------------------------------------------------------------
-@app.callback(
-    Output("nestedContent", "children"),
-    [Input("nestedTabs", "value"),
-     Input("filteredData", "data")]
-)
-def nested_graphs(nestedTab, data):
-
-    # SAFETY CHECK
-    if not data:
-        return html.Div("Waiting for data...")
-
-    dff = pd.DataFrame(data)
-
-    if nestedTab == "line":
-        fig = go.Figure()
-        for entity in dff["Entity"].unique():
-            df_e = dff[dff["Entity"] == entity]
-            fig.add_trace(go.Scatter(
-                x=df_e["Year"],
-                y=df_e["Electric car stocks"],
-                mode="lines+markers",
-                name=entity
-            ))
-        return dcc.Graph(figure=fig)
-
-    if nestedTab == "bar":
-        sums = dff.groupby("Entity")["Electric car stocks"].sum().reset_index()
-        fig = go.Figure(go.Bar(x=sums["Entity"], y=sums["Electric car stocks"]))
-        return dcc.Graph(figure=fig)
-
-    if nestedTab == "scatter":
-        fig = go.Figure()
-        for entity in dff["Entity"].unique():
-            df_e = dff[dff["Entity"] == entity]
-            fig.add_trace(go.Scatter(
-                x=df_e["Year"],
-                y=df_e["Electric car stocks"],
-                mode="markers",
-                name=entity
-            ))
-        return dcc.Graph(figure=fig)
-
-    if nestedTab == "trend":
-        fig = go.Figure()
-        for entity in dff["Entity"].unique():
-            df_e = dff[dff["Entity"] == entity]
-            fig.add_trace(go.Scatter(
-                x=df_e["Year"],
-                y=df_e["Electric car stocks"],
-                mode="markers",
-                name=entity
-            ))
-            if len(df_e) > 1:
-                m, b = np.polyfit(df_e["Year"], df_e["Electric car stocks"], 1)
-                fig.add_trace(go.Scatter(
-                    x=df_e["Year"],
-                    y=m * df_e["Year"] + b,
-                    mode="lines",
-                    name=f"{entity} trend"
-                ))
-        return dcc.Graph(figure=fig)
-
-# -------------------------------------------------------------
-# RUN APP
-# -------------------------------------------------------------
-if __name__ == "__main__":
-    app.run_server(debug=True)
+# 6. Top 10 Jogadores com mais vitórias nos 4 Grand Slams
+print("\n=== TOP 10 TENISTAS COM MAIS VITÓRIAS (GERAL) ===")
+top_vencedores = df_total.groupby(['Vencedor', 'Sexo']).size().reset_index(name='Vitorias')
+display(top_vencedores.sort_values(by='Vitorias', ascending=False).head(10))
