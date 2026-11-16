@@ -1,17 +1,20 @@
 import zipfile
 import numpy as np
 import pandas as pd
-from flask import Flask
+import matplotlib.pyplot as plt
+import seaborn as sns
+import streamlit as st
 
-# Inicializa a aplicação Flask (o Gunicorn procura por esta variável 'app')
-app = Flask(__name__)
+# Configuração da página do Streamlit
+st.set_page_config(page_title="Dashboard de Ténis - Grand Slams", layout="wide")
 
-@app.route('/')
-def home():
-    # 1. Caminho do ficheiro ZIP no repositório
+st.title(" Dashboard Interativo de Estatísticas de Ténis (Grand Slams)")
+st.markdown("Explore os dados dos torneios de Grand Slam de forma interativa.")
+
+# 1. Carregamento dos dados (com cache para ser mais rápido)
+@st.cache_data
+def carregar_dados():
     caminho_zip = 'tennis+major+tournament+match+statistics.zip'
-    
-    # 2. Extração e unificação dos ficheiros CSV
     lista_dfs = []
 
     with zipfile.ZipFile(caminho_zip, 'r') as z:
@@ -41,39 +44,65 @@ def home():
     }
     df_total['Nome_Ronda'] = df_total['Round'].map(mapa_rondas).fillna(df_total['Round'].astype(str))
     df_total['Vencedor'] = np.where(df_total['Result'] == 1, df_total['Player1'], df_total['Player2'])
+    
+    return df_total
 
-    # Top 10 tenistas com mais vitórias
-    top_vencedores = df_total.groupby(['Vencedor', 'Sexo']).size().reset_index(name='Vitorias')
-    top_10 = top_vencedores.sort_values(by='Vitorias', ascending=False).head(10)
+df_total = carregar_dados()
 
-    # 3. Gerar a página HTML de resposta
-    html_content = f"""
-    <html>
-        <head>
-            <title>Estatísticas de Ténis</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; color: #333; }}
-                h1, h2 {{ color: #2c3e50; }}
-                table {{ border-collapse: collapse; width: 100%; margin-bottom: 30px; background: #fff; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                th {{ background-color: #4CAF50; color: white; }}
-                tr:nth-child(even) {{ background-color: #f2f2f2; }}
-            </style>
-        </head>
-        <body>
-            <h1>Painel de Estatísticas de Ténis dos Grand Slams</h1>
-            <p><b>Total de partidas carregadas:</b> {len(df_total)}</p>
-            
-            <h2>Top 10 Tenistas com Mais Vitórias (Geral)</h2>
-            {top_10.to_html(index=False, classes='table')}
-            
-            <h2>Amostra de Partidas (Primeiras 10)</h2>
-            {df_total[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor']].head(10).to_html(index=False, classes='table')}
-        </body>
-    </html>
-    """
-    return html_content
+# 2. Barra Lateral (Sidebar) para Filtros Interativos
+st.sidebar.header("Filtros do Dashboard")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+torneios_disponiveis = df_total['Torneio'].unique()
+torneio_selecionado = st.sidebar.multiselect("Selecionar Torneio(s):", torneios_disponiveis, default=torneios_disponiveis)
 
+sexos_disponiveis = df_total['Sexo'].unique()
+sexo_selecionado = st.sidebar.multiselect("Selecionar Género:", sexos_disponiveis, default=sexos_disponiveis)
+
+# Aplicar filtros ao DataFrame
+df_filtrado = df_total[
+    (df_total['Torneio'].isin(torneio_selecionado)) & 
+    (df_total['Sexo'].isin(sexo_selecionado))
+]
+
+# 3. Métricas Principais no Topo
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("Total de Partidas Filtradas", len(df_filtrado))
+with col2:
+    st.metric("Jogadores Únicos Envolvidos", 
+              len(pd.concat([df_filtrado['Player1'], df_filtrado['Player2']]).unique()))
+
+st.markdown("---")
+
+# 4. Tabela Interativa de Partidas
+st.subheader(" Amostra de Partidas Filtradas")
+st.dataframe(df_filtrado[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']].head(50))
+
+# 5. Gráficos Interativos
+st.markdown("---")
+st.subheader(" Visualizações Gráficas")
+
+col_g1, col_g2 = st.columns(2)
+
+with col_g1:
+    st.markdown("**Número de Partidas por Torneio e Género**")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.countplot(data=df_filtrado, x='Torneio', hue='Sexo', ax=ax, palette='Set2')
+    ax.set_ylabel('Nº de Partidas')
+    st.pyplot(fig)
+
+with col_g2:
+    st.markdown("**Média de Aces por Partida**")
+    if 'ACE.1' in df_filtrado.columns and 'ACE.2' in df_filtrado.columns:
+        df_filtrado['Total_Aces'] = df_filtrado['ACE.1'].fillna(0) + df_filtrado['ACE.2'].fillna(0)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        sns.barplot(data=df_filtrado, x='Torneio', y='Total_Aces', hue='Sexo', ax=ax, palette='Set1', errorbar=None)
+        ax.set_ylabel('Média de Aces')
+        st.pyplot(fig)
+
+# 6. Top 10 Tenistas com Mais Vitórias
+st.markdown("---")
+st.subheader(" Top Tenistas com Mais Vitórias (Com base nos filtros)")
+top_vencedores = df_filtrado.groupby(['Vencedor', 'Sexo']).size().reset_index(name='Vitorias')
+top_10 = top_vencedores.sort_values(by='Vitorias', ascending=False).head(10)
+st.table(top_10)
