@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from google.colab import drive
+#from google.colab import drive
 
 # 1. Ligar ao Google Drive e definir o caminho do ficheiro
 drive.mount('/content/drive')
