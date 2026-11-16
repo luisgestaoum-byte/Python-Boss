@@ -1,4 +1,4 @@
-flask
+streamlit
 dash 
 dash-table 
 pandas 
