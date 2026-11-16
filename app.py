@@ -1,92 +1,79 @@
 import zipfile
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+from flask import Flask
 
-# 1. Definir o caminho do ficheiro local no repositório
-caminho_zip = 'tennis+major+tournament+match+statistics.zip'
+# Inicializa a aplicação Flask (o Gunicorn procura por esta variável 'app')
+app = Flask(__name__)
 
-# 2. Extração e unificação dos 8 ficheiros CSV
-lista_dfs = []
+@app.route('/')
+def home():
+    # 1. Caminho do ficheiro ZIP no repositório
+    caminho_zip = 'tennis+major+tournament+match+statistics.zip'
+    
+    # 2. Extração e unificação dos ficheiros CSV
+    lista_dfs = []
 
-with zipfile.ZipFile(caminho_zip, 'r') as z:
-    for ficheiro in z.namelist():
-        if ficheiro.endswith('.csv'):
-            # Extrai o Torneio e o Sexo a partir do nome (ex: 'AusOpen-men-2013.csv')
-            partes = ficheiro.split('/')[-1].replace('.csv', '').split('-')
-            torneio = partes[0]
-            sexo = 'Masculino' if partes[1].lower() == 'men' else 'Feminino'
+    with zipfile.ZipFile(caminho_zip, 'r') as z:
+        for ficheiro in z.namelist():
+            if ficheiro.endswith('.csv'):
+                partes = ficheiro.split('/')[-1].replace('.csv', '').split('-')
+                torneio = partes[0]
+                sexo = 'Masculino' if partes[1].lower() == 'men' else 'Feminino'
+                
+                df_temp = pd.read_csv(z.open(ficheiro))
+                df_temp.columns = [col.replace(' ', '') for col in df_temp.columns]
+                df_temp['Torneio'] = torneio
+                df_temp['Sexo'] = sexo
+                lista_dfs.append(df_temp)
+
+    df_total = pd.concat(lista_dfs, ignore_index=True)
+
+    # Mapeia o número da ronda para texto legível
+    mapa_rondas = {
+        1: '1ª Ronda (R128)',
+        2: '2ª Ronda (R64)',
+        3: '3ª Ronda (R32)',
+        4: 'Oitavos de Final (R16)',
+        5: 'Quartos de Final (QF)',
+        6: 'Meias-Finais (SF)',
+        7: 'Final (F)'
+    }
+    df_total['Nome_Ronda'] = df_total['Round'].map(mapa_rondas).fillna(df_total['Round'].astype(str))
+    df_total['Vencedor'] = np.where(df_total['Result'] == 1, df_total['Player1'], df_total['Player2'])
+
+    # Top 10 tenistas com mais vitórias
+    top_vencedores = df_total.groupby(['Vencedor', 'Sexo']).size().reset_index(name='Vitorias')
+    top_10 = top_vencedores.sort_values(by='Vitorias', ascending=False).head(10)
+
+    # 3. Gerar a página HTML de resposta
+    html_content = f"""
+    <html>
+        <head>
+            <title>Estatísticas de Ténis</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; color: #333; }}
+                h1, h2 {{ color: #2c3e50; }}
+                table {{ border-collapse: collapse; width: 100%; margin-bottom: 30px; background: #fff; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                th {{ background-color: #4CAF50; color: white; }}
+                tr:nth-child(even) {{ background-color: #f2f2f2; }}
+            </style>
+        </head>
+        <body>
+            <h1>Painel de Estatísticas de Ténis dos Grand Slams</h1>
+            <p><b>Total de partidas carregadas:</b> {len(df_total)}</p>
             
-            df_temp = pd.read_csv(z.open(ficheiro))
-            # Normaliza os nomes das colunas ANTES de juntar
-            df_temp.columns = [col.replace(' ', '') for col in df_temp.columns]
-            df_temp['Torneio'] = torneio
-            df_temp['Sexo'] = sexo
-            lista_dfs.append(df_temp)
+            <h2>Top 10 Tenistas com Mais Vitórias (Geral)</h2>
+            {top_10.to_html(index=False, classes='table')}
+            
+            <h2>Amostra de Partidas (Primeiras 10)</h2>
+            {df_total[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor']].head(10).to_html(index=False, classes='table')}
+        </body>
+    </html>
+    """
+    return html_content
 
-# Junta todos os torneios num único DataFrame
-df_total = pd.concat(lista_dfs, ignore_index=True)
-
-# Mapeia o número da ronda para texto legível
-mapa_rondas = {
-    1: '1ª Ronda (R128)',
-    2: '2ª Ronda (R64)',
-    3: '3ª Ronda (R32)',
-    4: 'Oitavos de Final (R16)',
-    5: 'Quartos de Final (QF)',
-    6: 'Meias-Finais (SF)',
-    7: 'Final (F)'
-}
-df_total['Nome_Ronda'] = df_total['Round'].map(mapa_rondas).fillna(df_total['Round'].astype(str))
-
-# Identifica o vencedor de cada partida
-df_total['Vencedor'] = np.where(df_total['Result'] == 1, df_total['Player1'], df_total['Player2'])
-
-print(f"\nTotal de partidas carregadas: {len(df_total)}")
-print(df_total[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']].head(10).to_string())
-
-# 3. Tabela: Total de Jogos por Torneio, Sexo e Ronda
-print("\n=== TOTAL DE PARTIDAS POR TORNEIO, SEXO E RONDA ===")
-resumo_rondas = pd.pivot_table(
-    df_total, 
-    index=['Round', 'Nome_Ronda'], 
-    columns=['Torneio', 'Sexo'], 
-    values='Vencedor', 
-    aggfunc='count', 
-    fill_value=0
-)
-print(resumo_rondas.to_string())
-
-# 4. Tabela: Campeões e Finalistas de cada Torneio
-print("\n=== FINAIS E CAMPEÕES POR TORNEIO E SEXO ===")
-finais = df_total[df_total['Round'] == 7][['Torneio', 'Sexo', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']]
-print(finais.to_string())
-
-# 5. Visualizações Gráficas (Guardar em vez de plt.show() para servidores)
-sns.set_theme(style="whitegrid")
-fig, axes = plt.subplots(1, 2, figsize=(15, 5))
-
-# Gráfico 1: Total de partidas registadas por Torneio e Sexo
-sns.countplot(data=df_total, x='Torneio', hue='Sexo', ax=axes[0], palette='Set2')
-axes[0].set_title('Número de Partidas Registadas por Torneio e Sexo')
-axes[0].set_xlabel('Torneio')
-axes[0].set_ylabel('Nº de Partidas')
-
-# Gráfico 2: Média de Aces por partida (Torneio vs Sexo)
-if 'ACE.1' in df_total.columns and 'ACE.2' in df_total.columns:
-    df_total['Total_Aces'] = df_total['ACE.1'].fillna(0) + df_total['ACE.2'].fillna(0)
-    sns.barplot(data=df_total, x='Torneio', y='Total_Aces', hue='Sexo', ax=axes[1], palette='Set1', errorbar=None)
-    axes[1].set_title('Média de Aces por Partida (Torneio vs Sexo)')
-    axes[1].set_xlabel('Torneio')
-    axes[1].set_ylabel('Média de Aces por Jogo')
-
-plt.tight_layout()
-plt.savefig('graficos_tenis.png') # Guarda o gráfico em imagem no servidor
-print("\nGráfico gerado e guardado com sucesso como 'graficos_tenis.png'.")
-
-# 6. Top 10 Jogadores com mais vitórias nos 4 Grand Slams
-print("\n=== TOP 10 TENISTAS COM MAIS VITÓRIAS (GERAL) ===")
-top_vencedores = df_total.groupby(['Vencedor', 'Sexo']).size().reset_index(name='Vitorias')
-print(top_vencedores.sort_values(by='Vitorias', ascending=False).head(10).to_string())
+if __name__ == '__main__':
+    app.run(debug=True)
 
