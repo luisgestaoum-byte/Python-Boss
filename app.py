@@ -6,9 +6,8 @@ import seaborn as sns
 #from google.colab import drive
 
 # 1. Ligar ao Google Drive e definir o caminho do ficheiro
-drive.mount('/content/drive')
-caminho_zip = '/content/drive/MyDrive/tennis+major+tournament+match+statistics.zip'
-
+#drive.mount('/content/drive')
+caminho_zip = 'tennis+major+tournament+match+statistics.zip'
 # 2. Extração e unificação dos 8 ficheiros CSV
 lista_dfs = []
 
