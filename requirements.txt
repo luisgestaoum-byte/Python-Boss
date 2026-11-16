@@ -2,5 +2,6 @@ dash
 dash-table 
 pandas 
 numpy 
-plotly 
+matplotlib
+plotly
 gunicorn
