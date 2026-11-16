@@ -3,11 +3,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-#from google.colab import drive
 
-# 1. Ligar ao Google Drive e definir o caminho do ficheiro
-#drive.mount('/content/drive')
+# 1. Definir o caminho do ficheiro local no repositório
 caminho_zip = 'tennis+major+tournament+match+statistics.zip'
+
 # 2. Extração e unificação dos 8 ficheiros CSV
 lista_dfs = []
 
@@ -20,7 +19,7 @@ with zipfile.ZipFile(caminho_zip, 'r') as z:
             sexo = 'Masculino' if partes[1].lower() == 'men' else 'Feminino'
             
             df_temp = pd.read_csv(z.open(ficheiro))
-            # Normaliza os nomes das colunas ANTES de juntar (evita o erro de labels duplicadas!)
+            # Normaliza os nomes das colunas ANTES de juntar
             df_temp.columns = [col.replace(' ', '') for col in df_temp.columns]
             df_temp['Torneio'] = torneio
             df_temp['Sexo'] = sexo
@@ -41,11 +40,11 @@ mapa_rondas = {
 }
 df_total['Nome_Ronda'] = df_total['Round'].map(mapa_rondas).fillna(df_total['Round'].astype(str))
 
-# Identifica o vencedor de cada partida (substitui o .apply que dava erro)
+# Identifica o vencedor de cada partida
 df_total['Vencedor'] = np.where(df_total['Result'] == 1, df_total['Player1'], df_total['Player2'])
 
 print(f"\nTotal de partidas carregadas: {len(df_total)}")
-display(df_total[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']].head(10))
+print(df_total[['Torneio', 'Sexo', 'Nome_Ronda', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']].head(10).to_string())
 
 # 3. Tabela: Total de Jogos por Torneio, Sexo e Ronda
 print("\n=== TOTAL DE PARTIDAS POR TORNEIO, SEXO E RONDA ===")
@@ -57,14 +56,14 @@ resumo_rondas = pd.pivot_table(
     aggfunc='count', 
     fill_value=0
 )
-display(resumo_rondas)
+print(resumo_rondas.to_string())
 
 # 4. Tabela: Campeões e Finalistas de cada Torneio
 print("\n=== FINAIS E CAMPEÕES POR TORNEIO E SEXO ===")
 finais = df_total[df_total['Round'] == 7][['Torneio', 'Sexo', 'Player1', 'Player2', 'Vencedor', 'FNL1', 'FNL2']]
-display(finais)
+print(finais.to_string())
 
-# 5. Visualizações Gráficas
+# 5. Visualizações Gráficas (Guardar em vez de plt.show() para servidores)
 sns.set_theme(style="whitegrid")
 fig, axes = plt.subplots(1, 2, figsize=(15, 5))
 
@@ -83,9 +82,11 @@ if 'ACE.1' in df_total.columns and 'ACE.2' in df_total.columns:
     axes[1].set_ylabel('Média de Aces por Jogo')
 
 plt.tight_layout()
-plt.show()
+plt.savefig('graficos_tenis.png') # Guarda o gráfico em imagem no servidor
+print("\nGráfico gerado e guardado com sucesso como 'graficos_tenis.png'.")
 
 # 6. Top 10 Jogadores com mais vitórias nos 4 Grand Slams
 print("\n=== TOP 10 TENISTAS COM MAIS VITÓRIAS (GERAL) ===")
 top_vencedores = df_total.groupby(['Vencedor', 'Sexo']).size().reset_index(name='Vitorias')
-display(top_vencedores.sort_values(by='Vitorias', ascending=False).head(10))
+print(top_vencedores.sort_values(by='Vitorias', ascending=False).head(10).to_string())
+
