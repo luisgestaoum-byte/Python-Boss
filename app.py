@@ -86,16 +86,7 @@ app.layout = html.Div([
                 multi=True
             )
         ], style={'width': '32%', 'display': 'inline-block', 'padding': '5px'}),
-
-        html.Div([
-            html.Label("Select Round(s):"),
-            dcc.Dropdown(
-                id='filter-round',
-                options=[{'label': r, 'value': r} for r in rounds_available],
-                value=rounds_available,
-                multi=True
-            )
-        ], style={'width': '32%', 'display': 'inline-block', 'padding': '5px'})
+            
     ]),
 
     html.Hr(),
