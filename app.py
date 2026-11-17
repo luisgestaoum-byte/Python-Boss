@@ -62,7 +62,6 @@ sexos_disponiveis = list(df_total['Sexo'].unique())
 # ==========================================
 app.layout = html.Div([
     html.H1("Dashboard Interativo de Estatísticas de Ténis (Grand Slams)", style={'textAlign': 'center'}),
-    html.P("Explore os dados dos torneios de Grand Slam de forma interativa.", style={'textAlign': 'center'}),
     html.Hr(),
 
     # Filtros
@@ -98,7 +97,7 @@ app.layout = html.Div([
         ], style={'width': '48%', 'display': 'inline-block', 'textAlign': 'center', 'border': '1px solid #ddd', 'padding': '10px'}),
 
         html.Div([
-            html.H4("Jogadores Únicos Envolvidos"),
+            html.H4("Jogadores Envolvidos"),
             html.H2(id="metrica-jogadores")
         ], style={'width': '48%', 'display': 'inline-block', 'textAlign': 'center', 'border': '1px solid #ddd', 'padding': '10px'})
     ]),
@@ -121,7 +120,7 @@ app.layout = html.Div([
     html.Hr(),
 
     # Amostra de Partidas
-    html.H3("Amostra de Partidas Filtradas (Primeiras 50)"),
+    html.H3("Amostra de Partidas Filtradas"),
     html.Div(id="tabela-partidas")
 
 ], style={'fontFamily': 'sans-serif', 'padding': '20px', 'maxWidth': '1200px', 'margin': 'auto'})
