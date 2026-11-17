@@ -62,7 +62,7 @@ rounds_available = list(df_total['Round_Name'].unique())
 # 3. DASHBOARD LAYOUT
 # ==========================================
 app.layout = html.Div([
-    html.H1("Interactive Tennis Statistics Dashboard (Grand Slams)", style={'textAlign': 'center'}),
+    html.H1("Tennis Statistics Dashboard (Grand Slams)", style={'textAlign': 'center'}),
     html.Hr(),
 
     # Filters (Tournament, Gender, and Round)
